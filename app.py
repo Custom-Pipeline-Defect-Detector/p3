@@ -32,35 +32,13 @@ yx_c = {}
 index_version = "index_cn.html"
 
 
-def get_efficientnet_yolov8_weights(custom_path=None):
-    """
-    Resolve an EfficientNet-YOLOv8 weight path.
-
-    Preference order:
-    1. Explicit path provided in the request (custom_path)
-    2. Environment override EFFICIENTNET_YOLOV8_WEIGHTS
-    3. Local repo default EfficientNet-YOLOv8/weights/best.pt
-    4. Ultralytics built-in yolov8n.pt
-
-    Windows paths using backslashes are normalized so they work when passed
-    from a Windows client.
-    """
-
-    def normalize(path):
-        if not path:
-            return None
-        return os.path.normpath(os.path.expanduser(path.strip()))
-
-    resolved_custom = normalize(custom_path)
-    if resolved_custom and os.path.exists(resolved_custom):
-        return resolved_custom
-
-    env_override = normalize(os.environ.get("EFFICIENTNET_YOLOV8_WEIGHTS"))
+def get_efficientnet_yolov8_weights():
+    env_override = os.environ.get("EFFICIENTNET_YOLOV8_WEIGHTS")
     if env_override and os.path.exists(env_override):
         return env_override
 
-    default_path = normalize(os.path.join("EfficientNet-YOLOv8", "weights", "best.pt"))
-    if default_path and os.path.exists(default_path):
+    default_path = os.path.join("EfficientNet-YOLOv8", "weights", "best.pt")
+    if os.path.exists(default_path):
         return default_path
 
     # Fall back to a small public checkpoint that ultralytics will download on demand
@@ -92,8 +70,7 @@ def diseaseAnalysis():
                 f.truncate(0)
             f.close()
     elif modelType == "EfficientNet-YOLOv8":
-        weight_override = request.form.get("efficientnet_yolov8_weights")
-        model = load_model('efficientnet-yolov8', weights_path=get_efficientnet_yolov8_weights(weight_override))
+        model = load_model('efficientnet-yolov8', weights_path=get_efficientnet_yolov8_weights())
         output_dir = './static/output/efficientnet_yolov8'
         os.makedirs(output_dir, exist_ok=True)
         for upload_file_path in upload_files_path_s:
@@ -292,8 +269,7 @@ def detect():
                 run_yolox(path=upload_file_path, nms=float(yx_c["nms"]), conf=float(yx_c["conf"]),
                           device=yx_c["device"], tsize=int(yx_c["tsize"]))
             elif result_model["model_type"] == "EfficientNet-YOLOv8":
-                weight_override = result_model.get("efficientnet_yolov8_weights")
-                model = load_model('efficientnet-yolov8', weights_path=get_efficientnet_yolov8_weights(weight_override))
+                model = load_model('efficientnet-yolov8', weights_path=get_efficientnet_yolov8_weights())
                 image = Image.open(upload_file_path)
                 result_image, detections = detect_objects(model, image)
                 output_dir = './static/output/efficientnet_yolov8'
