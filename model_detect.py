@@ -762,14 +762,13 @@ def main(exp, demo, experiment_name, path, camid, save_result, ckpt, device, con
         imageflow_demo(predictor, vis_folder, current_time, path, demo, camid, save_result)
 
 def load_model(model_type, weights_path=None):
-    if model_type == 'yolov5' or model_type == 'yolov7':
-        # Load your YOLOv5 or YOLOv7 model here
-        model = ...  # Replace with your YOLOv5/v7 model loading code
-    elif model_type == 'EfficientNetYOLOv8':
-        if weights_path:
-            model = YOLO(weights_path)
-        else:
-            raise ValueError("Weights path must be provided for YOLOv8 model")
+    model_type = model_type.lower()
+    if model_type in ('yolov5', 'yolov7'):
+        # YOLOv5/YOLOv7 loading is handled by the dedicated run_yolov_5_7 helper
+        raise ValueError("Use run_yolov_5_7 for YOLOv5/YOLOv7 inference.")
+    elif model_type in ('efficientnetyolov8', 'efficientnet-yolov8', 'yolov8'):
+        weight_source = weights_path or "yolov8n.pt"
+        model = YOLO(weight_source)
     elif model_type == 'fasterrcnn':
         model = FRCNN()
     elif model_type == 'yolox':
@@ -787,8 +786,8 @@ def detect_objects(model, image):
         image = image.convert('RGB')
     if isinstance(model, YOLO):
         image_np = np.array(image)
-        results = model(image_np)
-        # Process results
+        results = model.predict(image_np)
+        annotated = results[0].plot()  # numpy array with drawn boxes
         detections = []
         for result in results:
             for box in result.boxes:
@@ -801,7 +800,7 @@ def detect_objects(model, image):
                     'bbox': [x1, y1, x2, y2]
                 })
 
-        result_image = Image.fromarray(image_np)
+        result_image = Image.fromarray(annotated)
         return result_image, detections
 
     elif isinstance(model, FRCNN):
