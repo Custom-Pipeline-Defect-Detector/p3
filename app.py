@@ -31,6 +31,41 @@ fr_c = {}
 yx_c = {}
 index_version = "index_cn.html"
 
+
+def get_efficientnet_yolov8_weights(custom_path=None):
+    """
+    Resolve an EfficientNet-YOLOv8 weight path.
+
+    Preference order:
+    1. Explicit path provided in the request (custom_path)
+    2. Environment override EFFICIENTNET_YOLOV8_WEIGHTS
+    3. Local repo default EfficientNet-YOLOv8/weights/best.pt
+    4. Ultralytics built-in yolov8n.pt
+
+    Windows paths using backslashes are normalized so they work when passed
+    from a Windows client.
+    """
+
+    def normalize(path):
+        if not path:
+            return None
+        return os.path.normpath(os.path.expanduser(path.strip()))
+
+    resolved_custom = normalize(custom_path)
+    if resolved_custom and os.path.exists(resolved_custom):
+        return resolved_custom
+
+    env_override = normalize(os.environ.get("EFFICIENTNET_YOLOV8_WEIGHTS"))
+    if env_override and os.path.exists(env_override):
+        return env_override
+
+    default_path = normalize(os.path.join("EfficientNet-YOLOv8", "weights", "best.pt"))
+    if default_path and os.path.exists(default_path):
+        return default_path
+
+    # Fall back to a small public checkpoint that ultralytics will download on demand
+    return "yolov8n.pt"
+
 @app.route('/disease-detection/diseaseAnalysis', methods=['POST', 'OPTIONS'])
 @cross_origin()
 def diseaseAnalysis():
@@ -57,14 +92,18 @@ def diseaseAnalysis():
                 f.truncate(0)
             f.close()
     elif modelType == "EfficientNet-YOLOv8":
-        model = load_model('yolov8', weights_path="D:/yolov8/runs/detect/train 126 backup/best.pt")
+        weight_override = request.form.get("efficientnet_yolov8_weights")
+        model = load_model('efficientnet-yolov8', weights_path=get_efficientnet_yolov8_weights(weight_override))
+        output_dir = './static/output/efficientnet_yolov8'
+        os.makedirs(output_dir, exist_ok=True)
         for upload_file_path in upload_files_path_s:
             print("upload_file_path", upload_file_path)
             image = Image.open(upload_file_path)
-            results = detect_objects(model, image)
-            # Save the detection results image
-            result_image = Image.fromarray(results['image'])
-            result_image_path = upload_file_path.replace(".jpg", "_detected.jpg")
+            result_image, detections = detect_objects(model, image)
+            result_image_path = os.path.join(
+                output_dir,
+                os.path.basename(upload_file_path).replace(".jpg", "_detected.jpg")
+            )
             result_image.save(result_image_path)
             identify_images_s.append(result_image_path)
 
@@ -234,6 +273,7 @@ def detect():
     print("result_model", result_model)
     for upload_file_path in upload_files_path:
         if IMAGE_FLAG:
+            record_identify_from_file = True
             if y57_c:
                 print("配置yolov5后")
                 print(y57_c)
@@ -252,13 +292,19 @@ def detect():
                 run_yolox(path=upload_file_path, nms=float(yx_c["nms"]), conf=float(yx_c["conf"]),
                           device=yx_c["device"], tsize=int(yx_c["tsize"]))
             elif result_model["model_type"] == "EfficientNet-YOLOv8":
-                model = load_model('yolov8', weights_path="D:/yolov8/runs/detect/train 126 backup/best.pt")
+                weight_override = result_model.get("efficientnet_yolov8_weights")
+                model = load_model('efficientnet-yolov8', weights_path=get_efficientnet_yolov8_weights(weight_override))
                 image = Image.open(upload_file_path)
                 result_image, detections = detect_objects(model, image)
-                # Save the detection results image
-                result_image_path = upload_file_path.replace(".jpg", "_detected.jpg")
+                output_dir = './static/output/efficientnet_yolov8'
+                os.makedirs(output_dir, exist_ok=True)
+                result_image_path = os.path.join(
+                    output_dir,
+                    os.path.basename(upload_file_path).replace(".jpg", "_detected.jpg")
+                )
                 result_image.save(result_image_path)
                 identify_images.append(result_image_path)
+                record_identify_from_file = False
             else:
                 print("采用默认参数进行缺陷检测")
                 if result_model["model_type"] == "YOLOv5":
@@ -271,12 +317,12 @@ def detect():
                     run_yolov_5_7(source=upload_file_path, yolo_version=7)
                 else:
                     run_yolov_5_7(source=upload_file_path, yolo_version=7)
-            # while os.path.getsize('./inference/output/identify_image.txt') == 0:  # identify_image.txt中保存了图像检测结构的保存路径
-            #     pass
-            with open('./inference/output/identify_image.txt', "r+", encoding='UTF-8') as f:
-                identify_images.append(f.readline())
-                f.truncate(0)
-            f.close()
+            if record_identify_from_file:
+                with open('./inference/output/identify_image.txt', "r+", encoding='UTF-8') as f:
+                    identify_path = f.readline().strip()
+                    if identify_path:
+                        identify_images.append(identify_path)
+                    f.truncate(0)
         elif VIDEO_FLAG:
             # 调整关键帧提取过程的参数
             if kf_c:
